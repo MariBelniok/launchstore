@@ -1,11 +1,10 @@
-const { formatPrice } = require('../../lib/utils')
+const { formatPrice, date } = require('../../lib/utils')
 const Category = require('../models/Category')
 const Product = require('../models/Product')
 const File = require('../models/File')
 
 module.exports = {
     create(req, res) {
-        //promisse
         Category.all()
         .then(results => {
             const categories = results.rows
@@ -23,7 +22,7 @@ module.exports = {
             }
         }
 
-        if (req.files.length == 0) {  //verifica se há imagem
+        if (req.files.length == 0) { 
             return res.send('Please, send at least one image')
         }
 
@@ -31,10 +30,34 @@ module.exports = {
         const productId = results.rows[0].id
 
         const filesPromise = req.files.map(file => File.create({...file, product_id: productId}))
-        //cria um array de promessas para guardar os arquivos
+
         await Promise.all(filesPromise) 
 
         return res.redirect(`products/${productId}/edit`)
+    },
+    async show(req, res) {
+        let results = await Product.find(req.params.id)
+        const product = results.rows[0]
+
+        if(!product) return res.send("Product Not Found!")
+
+        const { day, hour, minutes, month } = date(product.updated_at)
+
+        product.published = {
+            day: `${day.slice(-2)}/${month.slice(-2)}`,
+            hour: `${hour}h${minutes}`
+        }
+
+        product.oldPrice = formatPrice(product.old_price)
+        product.price = formatPrice(product.price)
+
+        results = await Product.file(product.id)
+        const files = results.rows.map(file => ({
+            ...file, 
+            src: `${req.protocol}://${req.headers.host}${file.path.replace("public", "")}`
+        }))
+
+        return res.render("products/show", {product, files})
     },
     async edit(req, res){
         let results = await Product.find(req.params.id)
@@ -45,11 +68,11 @@ module.exports = {
         product.old_price = formatPrice(product.old_price)
         product.price = formatPrice(product.price)
 
-        //get categories
+
         results = await Category.all()
         const categories = results.rows
 
-        //get images
+
         results = await Product.file(product.id)
         let files = results.rows
         files = files.map(file => ({
@@ -75,12 +98,12 @@ module.exports = {
         }
 
         if(req.body.removed_files){
-            // 1,2,3
-            const removedFiles = req.body.removed_files.split(",") //[1,2,3,]
-            const lastIndex = removedFiles.length - 1
-            removedFiles.splice(lastIndex, 1) //[1,2,3]
 
-            const removedFilesPromise = removedFiles.map(id => File.delete(id)) //cria um array de promisses
+            const removedFiles = req.body.removed_files.split(",") 
+            const lastIndex = removedFiles.length - 1
+            removedFiles.splice(lastIndex, 1) 
+
+            const removedFilesPromise = removedFiles.map(id => File.delete(id)) 
 
             await Promise.all(removedFilesPromise)
         }
@@ -95,7 +118,7 @@ module.exports = {
         }
         await Product.update(req.body)
 
-        return res.redirect(`/products/${req.body.id}/edit`)
+        return res.redirect(`/products/${req.body.id}`)
     },
     async delete(req, res) {
         await Product.delete(req.body.id)
